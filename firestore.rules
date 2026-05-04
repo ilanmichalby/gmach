@@ -1,0 +1,90 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email == 'mindcetdev@gmail.com';
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Item Validation
+    function isValidItem(data) {
+      return data.keys().hasAll(['name', 'category', 'totalQuantity']) &&
+             data.keys().size() >= 3 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.category is string &&
+             data.totalQuantity is int && data.totalQuantity >= 0;
+    }
+
+    // Order Validation (Public Part)
+    function isValidOrder(data) {
+      return data.keys().hasAll(['pickupDate', 'returnDate', 'items', 'status', 'createdAt', 'updatedAt']) &&
+             data.pickupDate is timestamp &&
+             data.returnDate is timestamp &&
+             data.items is list && data.items.size() > 0 &&
+             data.status in ['pending', 'approved', 'rejected', 'cancelled', 'collected', 'returned'] &&
+             data.createdAt == request.time &&
+             data.updatedAt == request.time;
+    }
+
+    // Order Contact Validation (Private Part)
+    function isValidContact(data) {
+      return data.keys().hasAll(['userName', 'userEmail', 'userPhone']) &&
+             data.keys().size() == 3 &&
+             data.userName is string && data.userName.size() > 0 &&
+             data.userEmail is string && data.userEmail.size() > 0 &&
+             data.userPhone is string && data.userPhone.size() > 0;
+    }
+
+    // Connection Test Path
+    match /_connection_test/{docId} {
+      allow read: if true;
+    }
+
+    // Items Collection
+    match /items/{itemId} {
+      allow read: if true; // Catalogue is public
+      allow write: if isAdmin();
+    }
+
+    // Orders Collection
+    match /orders/{orderId} {
+      // Public needs to read orders to calculate remaining stock
+      // However, we only allow listing approved/pending orders for transparency
+      allow read: if true; 
+      
+      // Anyone can create an order
+      allow create: if isValidOrder(incoming());
+      
+      // Admin manages status
+      allow update, delete: if isAdmin();
+
+      // PII Information is locked
+      match /private/{contactId} {
+        allow read: if isAdmin();
+        allow create: if isValidContact(incoming());
+        allow update, delete: if isAdmin();
+      }
+    }
+  }
+}

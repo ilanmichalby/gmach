@@ -1,0 +1,69 @@
+{
+  "entities": {
+    "Item": {
+      "title": "Item",
+      "description": "Equipment available for lending",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "totalQuantity": { "type": "integer" }
+      },
+      "required": ["name", "category", "totalQuantity"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "A lending request from a user (public details)",
+      "type": "object",
+      "properties": {
+        "pickupDate": { "type": "string", "format": "date-time" },
+        "returnDate": { "type": "string", "format": "date-time" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "itemId": { "type": "string" },
+              "itemName": { "type": "string" },
+              "quantity": { "type": "integer" }
+            }
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "approved", "rejected", "cancelled", "collected", "returned"]
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["pickupDate", "returnDate", "items", "status"]
+    },
+    "OrderContact": {
+      "title": "OrderContact",
+      "description": "Private contact info for an order",
+      "type": "object",
+      "properties": {
+        "userName": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userPhone": { "type": "string" }
+      },
+      "required": ["userName", "userEmail", "userPhone"]
+    }
+  },
+  "firestore": {
+    "/items/{itemId}": {
+      "schema": "Item",
+      "description": "Collection of items in the Gemach"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Collection of orders (non-PII details)"
+    },
+    "/orders/{orderId}/private/contact": {
+      "schema": "OrderContact",
+      "description": "Sensitive contact info for the order"
+    }
+  }
+}
