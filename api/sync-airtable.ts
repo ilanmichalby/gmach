@@ -2,10 +2,11 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import Airtable from "airtable";
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
 import firebaseConfig from "../firebase-applet-config.json";
 
 // Initialize Firebase Admin (Singleton pattern for Serverless)
-function getAdminDb() {
+function getAdmin() {
   if (getApps().length === 0) {
     let credential;
     
@@ -35,10 +36,56 @@ function getAdminDb() {
     const adminApp = initializeApp({
       credential,
       projectId: firebaseConfig.projectId,
+      storageBucket: firebaseConfig.storageBucket
     });
-    return getFirestore(adminApp, firebaseConfig.firestoreDatabaseId);
+    return {
+      db: getFirestore(adminApp, firebaseConfig.firestoreDatabaseId),
+      storage: getStorage(adminApp)
+    };
   }
-  return getFirestore(getApps()[0], firebaseConfig.firestoreDatabaseId);
+  
+  const app = getApps()[0];
+  return {
+    db: getFirestore(app, firebaseConfig.firestoreDatabaseId),
+    storage: getStorage(app)
+  };
+}
+
+async function uploadImageToStorage(storage: any, imageUrl: string, itemId: string, fileName: string): Promise<string> {
+  try {
+    const bucket = storage.bucket();
+    const fileExtension = fileName.split('.').pop() || 'jpg';
+    const filePath = `items/${itemId}.${fileExtension}`;
+    const file = bucket.file(filePath);
+
+    // Check if file already exists to save bandwidth/time
+    const [exists] = await file.exists();
+    if (exists) {
+      // Return the public URL if it already exists
+      return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(filePath)}?alt=media`;
+    }
+
+    // Download image from Airtable
+    const response = await fetch(imageUrl);
+    if (!response.ok) throw new Error(`Failed to fetch image from Airtable: ${response.statusText}`);
+    
+    const buffer = Buffer.from(await response.arrayBuffer());
+
+    // Upload to Firebase Storage
+    await file.save(buffer, {
+      metadata: {
+        contentType: response.headers.get('content-type') || 'image/jpeg',
+      },
+      public: true, // Make it publicly accessible
+    });
+
+    // Construct the public download URL
+    // Format: https://firebasestorage.googleapis.com/v0/b/<bucket>/o/<path>?alt=media
+    return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(filePath)}?alt=media`;
+  } catch (error) {
+    console.error(`Error uploading image for item ${itemId}:`, error);
+    return "";
+  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -55,7 +102,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const adminDb = getAdminDb();
+    const { db, storage } = getAdmin();
     const base = new Airtable({ apiKey }).base(baseId);
     const records = await base(tableName).select().all();
 
@@ -63,42 +110,54 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(404).json({ error: `No records found in Airtable table: ${tableName}` });
     }
 
-    const itemsCollection = adminDb.collection("items");
+    const itemsCollection = db.collection("items");
     let syncedCount = 0;
     let skippedCount = 0;
+    let imageUploadCount = 0;
 
-    const batchSize = 400;
-    for (let i = 0; i < records.length; i += batchSize) {
-      const batch = adminDb.batch();
-      const chunk = records.slice(i, i + batchSize);
+    // Process records in sequence to avoid overwhelming the storage/fetch
+    for (const record of records) {
+      const fields = record.fields;
+      const itemName = (fields["Name"] || fields["שם"] || fields["שם הפריט"] || fields["Product"] || fields["מוצר"] || fields["פריט"] || fields["Item"]) as string;
 
-      for (const record of chunk) {
-        const fields = record.fields;
-        const itemName = (fields["Name"] || fields["שם"] || fields["שם הפריט"] || fields["Product"] || fields["מוצר"] || fields["פריט"] || fields["Item"]) as string;
-
-        if (!itemName) {
-          skippedCount++;
-          continue;
-        }
-
-        const data: any = {
-          name: itemName,
-          category: (fields["Category"] || fields["category"] || fields["קטגוריה"] || fields["סוג"] || fields["מחלקה"]) as string || "שונות",
-          description: (fields["Description"] || fields["description"] || fields["תיאור"] || fields["פירוט"] || fields["תיאור מוצר"]) as string || "",
-          totalQuantity: Number(fields["Total"] || fields["כמות"] || fields["Quantity"] || fields["מלאי"] || fields["סך הכל"]) || 0,
-          imageUrl: (fields["Image"] as any)?.[0]?.url || (fields["image"] as any)?.[0]?.url || (fields["תמונה"] as any)?.[0]?.url || (fields["Image URL"] || fields["קישור לתמונה"] || fields["קישור"]) as string || "",
-          airtableId: record.id,
-          updatedAt: new Date(),
-        };
-
-        const docRef = itemsCollection.doc(record.id);
-        batch.set(docRef, data, { merge: true });
-        syncedCount++;
+      if (!itemName) {
+        skippedCount++;
+        continue;
       }
-      await batch.commit();
+
+      // Handle Image
+      const airtableImage = (fields["Image"] as any)?.[0] || (fields["image"] as any)?.[0] || (fields["תמונה"] as any)?.[0];
+      let imageUrl = "";
+
+      if (airtableImage?.url) {
+        // Try to upload to Firebase Storage and get permanent URL
+        imageUrl = await uploadImageToStorage(storage, airtableImage.url, record.id, airtableImage.filename || "image.jpg");
+        if (imageUrl) imageUploadCount++;
+      } else {
+        // Fallback to manual URL fields if provided
+        imageUrl = (fields["Image URL"] || fields["קישור לתמונה"] || fields["קישור"]) as string || "";
+      }
+
+      const data: any = {
+        name: itemName,
+        category: (fields["Category"] || fields["category"] || fields["קטגוריה"] || fields["סוג"] || fields["מחלקה"]) as string || "שונות",
+        description: (fields["Description"] || fields["description"] || fields["תיאור"] || fields["פירוט"] || fields["תיאור מוצר"]) as string || "",
+        totalQuantity: Number(fields["Total"] || fields["כמות"] || fields["Quantity"] || fields["מלאי"] || fields["סך הכל"]) || 0,
+        imageUrl: imageUrl,
+        airtableId: record.id,
+        updatedAt: new Date(),
+      };
+
+      await itemsCollection.doc(record.id).set(data, { merge: true });
+      syncedCount++;
     }
 
-    return res.json({ message: `סונכרנו בהצלחה ${syncedCount} מוצרים מאיירטייבל.`, syncedCount, skippedCount });
+    return res.json({ 
+      message: `סונכרנו בהצלחה ${syncedCount} מוצרים. ${imageUploadCount} תמונות הועלו לאחסון קבוע.`, 
+      syncedCount, 
+      skippedCount,
+      imageUploadCount
+    });
   } catch (error: any) {
     console.error("Airtable sync error:", error);
     return res.status(500).json({ error: error.message });
