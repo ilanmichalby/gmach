@@ -114,13 +114,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let syncedCount = 0;
     let skippedCount = 0;
     let imageUploadCount = 0;
+    const MAX_ITEMS_PER_RUN = 5; // הגבלה כדי למנוע Timeout ב-Vercel
 
-    // Process records in sequence to avoid overwhelming the storage/fetch
     for (const record of records) {
+      if (syncedCount >= MAX_ITEMS_PER_RUN) break;
+
       const fields = record.fields;
       const itemName = (fields["Name"] || fields["שם"] || fields["שם הפריט"] || fields["Product"] || fields["מוצר"] || fields["פריט"] || fields["Item"]) as string;
 
       if (!itemName) {
+        skippedCount++;
+        continue;
+      }
+
+      // Check if already synced and has image
+      const docRef = itemsCollection.doc(record.id);
+      const docSnap = await docRef.get();
+      const existingData = docSnap.exists ? docSnap.data() : null;
+
+      // Skip if already has a firebase storage image
+      if (existingData?.imageUrl?.includes('firebasestorage.googleapis.com')) {
         skippedCount++;
         continue;
       }
@@ -130,11 +143,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       let imageUrl = "";
 
       if (airtableImage?.url) {
-        // Try to upload to Firebase Storage and get permanent URL
         imageUrl = await uploadImageToStorage(storage, airtableImage.url, record.id, airtableImage.filename || "image.jpg");
         if (imageUrl) imageUploadCount++;
       } else {
-        // Fallback to manual URL fields if provided
         imageUrl = (fields["Image URL"] || fields["קישור לתמונה"] || fields["קישור"]) as string || "";
       }
 
@@ -148,15 +159,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         updatedAt: new Date(),
       };
 
-      await itemsCollection.doc(record.id).set(data, { merge: true });
+      await docRef.set(data, { merge: true });
       syncedCount++;
     }
 
+    const remaining = records.length - (syncedCount + skippedCount);
+    let message = `סונכרנו בהצלחה ${syncedCount} מוצרים.`;
+    if (remaining > 0) {
+      message += ` נשארו עוד ${remaining} מוצרים לסנכרן. לחץ שוב על סנכרון כדי להמשיך.`;
+    } else {
+      message = `הסנכרון הושלם! כל ${records.length} המוצרים מעודכנים עם תמונות קבועות.`;
+    }
+
     return res.json({ 
-      message: `סונכרנו בהצלחה ${syncedCount} מוצרים. ${imageUploadCount} תמונות הועלו לאחסון קבוע.`, 
+      message, 
       syncedCount, 
       skippedCount,
-      imageUploadCount
+      imageUploadCount,
+      isFinished: remaining <= 0
     });
   } catch (error: any) {
     console.error("Airtable sync error:", error);
