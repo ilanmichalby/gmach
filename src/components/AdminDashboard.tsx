@@ -38,7 +38,7 @@ import {
   Calendar
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { CATEGORIES } from '../constants';
+import { CATEGORIES, ADMIN_EMAILS } from '../constants';
 
 interface AdminDashboardProps {
   user: User | null;
@@ -53,7 +53,7 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
   const [syncing, setSyncing] = useState(false);
 
   const syncFromAirtable = async () => {
-    if (!confirm('האם לסנכרן נתונים מאיירטייבל? זה עשוי לעדכן פריטים קיימים.')) return;
+    if (!confirm('האם לסנכרן נתונים מאיירטייבל? זה עשוי לעדכן פריטים קיימים ולהעלות תמונות ל-Storage.')) return;
     setSyncing(true);
     try {
       const res = await fetch('/api/sync-airtable', { method: 'POST' });
@@ -61,10 +61,12 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
       if (res.ok) {
         alert(data.message);
       } else {
-        alert('שגיאת סנכרון: ' + data.error);
+        const errorMsg = data.error || 'שגיאה לא ידועה';
+        alert(`שגיאת סנכרון: ${errorMsg}\n(סטטוס: ${res.status})`);
       }
     } catch (error) {
-      alert('שגיאת תקשורת עם השרת');
+      console.error('Sync request failed:', error);
+      alert('שגיאת תקשורת עם השרת. ייתכן שהפעולה לקחה זמן רב מדי (Timeout) או שחסרים משתני סביבה ב-Vercel.');
     } finally {
       setSyncing(false);
     }
@@ -72,7 +74,7 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
 
   // Orders and Inventory listeners
   useEffect(() => {
-    if (user?.email !== 'mindcetdev@gmail.com') return;
+    if (!user?.email || !ADMIN_EMAILS.includes(user.email)) return;
 
     const ordersUnsubscribe = onSnapshot(
       query(collection(db, 'orders'), orderBy('createdAt', 'desc')),
@@ -156,7 +158,7 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
     window.open(url, '_blank');
   };
 
-  if (user?.email !== 'mindcetdev@gmail.com') {
+  if (!user?.email || !ADMIN_EMAILS.includes(user.email)) {
     return (
       <div className="text-center py-20 bg-white rounded-2xl border border-slate-200">
         <h2 className="text-2xl font-bold text-slate-800 mb-2">גישה מוגבלת</h2>

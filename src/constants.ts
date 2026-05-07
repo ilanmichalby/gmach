@@ -24,3 +24,8 @@ export const CATEGORIES = [
 ];
 
 export const OPERATION_DAYS = [1, 3]; // Monday, Wednesday (0 is Sunday)
+
+export const ADMIN_EMAILS = [
+  'mindcetdev@gmail.com',
+  'ilanmichalby@gmail.com'
+];

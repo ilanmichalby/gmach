@@ -2,6 +2,7 @@ import { User, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/aut
 import { auth } from '../lib/firebase';
 import { LayoutDashboard, ShoppingBag, LogIn, LogOut } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { ADMIN_EMAILS } from '../constants';
 
 interface NavbarProps {
   currentView: 'user' | 'admin';
@@ -10,7 +11,7 @@ interface NavbarProps {
 }
 
 export function Navbar({ currentView, onToggleView, user }: NavbarProps) {
-  const isAdmin = user?.email === 'mindcetdev@gmail.com';
+  const isAdmin = user?.email && ADMIN_EMAILS.includes(user.email);
 
   const login = async () => {
     try {
