@@ -149,9 +149,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         imageUrl = (fields["Image URL"] || fields["קישור לתמונה"] || fields["קישור"]) as string || "";
       }
 
+      const categoryRaw = (fields["Category"] || fields["category"] || fields["קטגוריה"] || fields["סוג"] || fields["מחלקה"]) as any;
+      const category = (Array.isArray(categoryRaw) ? categoryRaw[0] : categoryRaw)?.toString().trim() || "שונות";
+
       const data: any = {
         name: itemName,
-        category: (fields["Category"] || fields["category"] || fields["קטגוריה"] || fields["סוג"] || fields["מחלקה"]) as string || "שונות",
+        category,
         description: (fields["Description"] || fields["description"] || fields["תיאור"] || fields["פירוט"] || fields["תיאור מוצר"]) as string || "",
         totalQuantity: Number(fields["Total"] || fields["כמות"] || fields["Quantity"] || fields["מלאי"] || fields["סך הכל"]) || 0,
         imageUrl: imageUrl,

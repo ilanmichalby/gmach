@@ -31,17 +31,25 @@ export function BookingFlow() {
   const [orderId, setOrderId] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>('הכל');
 
-  const filteredItems = items.filter(item =>
-    activeCategory === 'הכל' || item.category === activeCategory
-  );
+  const filteredItems = items.filter(item => {
+    if (activeCategory === 'הכל') return true;
+    const cat = item.category;
+    if (Array.isArray(cat)) return cat.includes(activeCategory);
+    return cat === activeCategory;
+  });
 
   const uniqueCategories: string[] = Array.from(
-    new Set<string>(allItems.map(i => i.category).filter(Boolean) as string[])
+    new Set<string>(
+      allItems.flatMap(i => Array.isArray(i.category) ? i.category : [i.category])
+        .filter(Boolean)
+        .map(c => c.trim())
+    )
   ).sort();
   const catalogCategories: string[] = ['הכל', ...uniqueCategories];
 
   const filteredCatalogItems = allItems.filter(item => {
-    const matchCat = activeCategory === 'הכל' || item.category === activeCategory;
+    const cat = item.category;
+    const matchCat = activeCategory === 'הכל' || (Array.isArray(cat) ? cat.includes(activeCategory) : cat === activeCategory);
     const matchSearch = !catalogSearch || item.name.includes(catalogSearch) || (item.description || '').includes(catalogSearch);
     return matchCat && matchSearch;
   });
@@ -244,7 +252,7 @@ export function BookingFlow() {
                           </div>
                         )}
                         <div className="absolute top-3 right-3 bg-white/90 backdrop-blur px-2.5 py-1 rounded-full text-[10px] font-black text-indigo-600 uppercase tracking-wide shadow-sm">
-                          {item.category}
+                          {Array.isArray(item.category) ? item.category.join(', ') : item.category}
                         </div>
                       </div>
                       <div className="p-5 flex-1 flex flex-col justify-between gap-4">

@@ -543,7 +543,7 @@ function InventoryManager({ items }: { items: Item[] }) {
                 </div>
               )}
               <div className="absolute top-2 left-2 bg-white/90 backdrop-blur px-2 py-1 rounded text-xs font-bold text-slate-600 uppercase">
-                {item.category}
+                {Array.isArray(item.category) ? item.category.join(', ') : item.category}
               </div>
               <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                 <button 
