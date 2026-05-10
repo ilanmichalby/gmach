@@ -35,7 +35,10 @@ export function BookingFlow() {
     activeCategory === 'הכל' || item.category === activeCategory
   );
 
-  const catalogCategories = ['הכל', ...Array.from(new Set(allItems.map(i => i.category).filter(Boolean))).sort()];
+  const uniqueCategories: string[] = Array.from(
+    new Set<string>(allItems.map(i => i.category).filter(Boolean) as string[])
+  ).sort();
+  const catalogCategories: string[] = ['הכל', ...uniqueCategories];
 
   const filteredCatalogItems = allItems.filter(item => {
     const matchCat = activeCategory === 'הכל' || item.category === activeCategory;
@@ -208,22 +211,11 @@ export function BookingFlow() {
                 />
               </div>
 
-              <div className="flex flex-wrap justify-center gap-2">
-                {catalogCategories.map(cat => (
-                  <button
-                    key={cat}
-                    onClick={() => setActiveCategory(cat)}
-                    className={cn(
-                      "px-4 py-1.5 rounded-full text-sm font-bold transition-all",
-                      activeCategory === cat
-                        ? "bg-slate-900 text-white shadow-md"
-                        : "bg-white border border-slate-200 text-slate-600 hover:border-indigo-400"
-                    )}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
+              <CategoryChips
+                categories={catalogCategories}
+                active={activeCategory}
+                onSelect={setActiveCategory}
+              />
             </div>
 
             {/* Items grid */}
@@ -389,30 +381,11 @@ export function BookingFlow() {
               </button>
             </div>
 
-            {/* Categories */}
-            <div className="flex flex-wrap justify-center gap-2">
-              <button
-                onClick={() => setActiveCategory('הכל')}
-                className={cn(
-                  "px-5 py-2 rounded-full text-sm font-bold transition-all",
-                  activeCategory === 'הכל' ? "bg-slate-900 text-white shadow-lg" : "bg-white border border-slate-200 text-slate-600 hover:border-indigo-400"
-                )}
-              >
-                הכל
-              </button>
-              {['כלי הגשה מפלסטיק', 'מפות משובצות', 'כלים בשריים', 'מעמדי צלחות', 'קישוטים'].map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => setActiveCategory(cat)}
-                  className={cn(
-                    "px-5 py-2 rounded-full text-sm font-bold transition-all",
-                    activeCategory === cat ? "bg-slate-900 text-white shadow-lg" : "bg-white border border-slate-200 text-slate-600 hover:border-indigo-400"
-                  )}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
+            <CategoryChips
+              categories={catalogCategories}
+              active={activeCategory}
+              onSelect={setActiveCategory}
+            />
 
             {loading ? (
               <div className="text-center py-32">
@@ -638,6 +611,33 @@ export function BookingFlow() {
         )}
 
       </AnimatePresence>
+    </div>
+  );
+}
+
+interface CategoryChipsProps {
+  categories: string[];
+  active: string;
+  onSelect: (cat: string) => void;
+}
+
+function CategoryChips({ categories, active, onSelect }: CategoryChipsProps) {
+  return (
+    <div className="flex flex-wrap justify-center gap-2">
+      {categories.map(cat => (
+        <button
+          key={cat}
+          onClick={() => onSelect(cat)}
+          className={cn(
+            "px-4 py-1.5 rounded-full text-sm font-bold transition-all",
+            active === cat
+              ? "bg-slate-900 text-white shadow-md"
+              : "bg-white border border-slate-200 text-slate-600 hover:border-indigo-400"
+          )}
+        >
+          {cat}
+        </button>
+      ))}
     </div>
   );
 }
